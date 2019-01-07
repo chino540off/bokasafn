@@ -1,4 +1,6 @@
 add_executable(bokasafn-tests
+  timer.cc
+
   size/literals.cc
 
   cache/common.cc
