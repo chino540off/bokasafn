@@ -41,12 +41,19 @@ cmake_dependent_option(BOKASAFN_BUILD_TESTING
   "BUILD_TESTING" OFF
 )
 
+cmake_dependent_option(BOKASAFN_BUILD_COVERAGE
+  "Build bokasafn coverage" ${BOKASAFN_MASTER_PROJECT}
+  "BUILD_COVERAGE" OFF
+)
+
 if(BOKASAFN_BUILD_TESTING)
 #
 # Enable tests
 #
   include(CTest)
+if(BOKASAFN_BUILD_COVERAGE)
   include(CodeCoverage)
+endif()
   enable_testing()
 
 # Deps subdirectories

@@ -22,6 +22,7 @@ target_link_libraries(bokasafn-tests
 
 add_test(NAME bokasafn-unit-tests COMMAND ./bokasafn-tests)
 
+if(BOKASAFN_BUILD_COVERAGE)
 set(COVERAGE_LCOV_EXTRACT
   '*/bokasafn/include/*'
 )
@@ -31,3 +32,4 @@ setup_TARGET_FOR_COVERAGE_LCOV(
     EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/bokasafn-tests
     DEPENDENCIES bokasafn-tests
 )
+endif()
