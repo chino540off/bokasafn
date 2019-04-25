@@ -1,4 +1,5 @@
 add_executable(bokasafn-tests
+  epoll.cc
   timer.cc
 
   size/literals.cc
