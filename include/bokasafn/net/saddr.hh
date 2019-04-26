@@ -194,6 +194,12 @@ operator<<(ostream & os, saddr const & a)
   return os << buffer << ":" << a.port(), os;
 }
 
+bool
+operator<(saddr const & lhs, saddr const & rhs)
+{
+  return memcmp(lhs.raw(), rhs.raw(), sizeof(struct sockaddr)) < 0;
+}
+
 } /** !net */
 } /** !bokasafn */
 
