@@ -15,6 +15,8 @@
 #include <system_error>
 #include <unordered_map>
 
+#include <bokasafn/exceptions.hh>
+
 namespace bokasafn
 {
 
@@ -51,7 +53,7 @@ public:
   {
     fd_ = epoll_create1(0);
     if (fd_ < 0)
-      throw std::system_error(errno, std::generic_category());
+      throw bokasafn::exceptions::perror("epoll_create1");
   }
 
   ~epoll() { close(fd_); }
@@ -89,7 +91,7 @@ public:
         if (again)
         {
           if (epoll_ctl(fd_, EPOLL_CTL_MOD, fd, &it->second.e))
-            throw std::system_error(errno, std::generic_category());
+            throw bokasafn::exceptions::perror("epoll_ctl(MOD)");
         }
         else
         {
@@ -116,7 +118,7 @@ public:
     fd_handler_t handle{f, evt};
 
     if (epoll_ctl(fd_, EPOLL_CTL_ADD, fd, &evt))
-      throw std::system_error(errno, std::generic_category());
+      throw bokasafn::exceptions::perror("epoll_ctl(ADD)");
 
     handlers_.emplace(fd, handle);
 
@@ -129,7 +131,7 @@ public:
     handlers_.erase(fd);
 
     if (epoll_ctl(fd_, EPOLL_CTL_DEL, fd, nullptr))
-      throw std::system_error(errno, std::generic_category());
+      throw bokasafn::exceptions::perror("epoll_ctl(DEL)");
   }
 
 private:
@@ -149,7 +151,7 @@ public:
   {
     int fd = timerfd_create(CLOCK_MONOTONIC, 0);
     if (fd < 0)
-      throw std::system_error(errno, std::generic_category());
+      throw bokasafn::exceptions::perror("timerfd_create");
 
     struct itimerspec ts
     {
@@ -157,14 +159,14 @@ public:
     };
 
     if (timerfd_settime(fd, 0, &ts, NULL) < 0)
-      throw std::system_error(errno, std::generic_category());
+      throw bokasafn::exceptions::perror("timerfd_settime");
 
     return add(fd, [f](int fd) {
       size_t data = 0;
 
       // Read on timer fd to stop epoll
       if (read(fd, &data, sizeof(data)) < 0)
-        throw std::system_error(errno, std::generic_category());
+        throw bokasafn::exceptions::perror("timer read");
 
       return f(fd);
     });
