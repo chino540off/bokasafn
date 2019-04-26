@@ -1,4 +1,5 @@
 add_executable(bokasafn-tests
+  exceptions.cc
   epoll.cc
   timer.cc
 
