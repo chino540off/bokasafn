@@ -2,6 +2,8 @@ add_executable(bokasafn-tests
   epoll.cc
   timer.cc
 
+  net/socket.cc
+
   size/literals.cc
 
   cache/common.cc
