@@ -13,6 +13,8 @@
 #include <algorithm> // std::reverse()
 #include <string>
 
+#include <bokasafn/exceptions.hh>
+
 namespace bokasafn
 {
 namespace net
@@ -63,12 +65,8 @@ public:
     hint.ai_flags = AI_NUMERICHOST;
 
     if (getaddrinfo(str.c_str(), nullptr, &hint, &info))
-    {
-      // FIXME: throw exception
-      //  puts("Invalid address");
-      //  puts(gai_strerror(ret));
-      //  return 1;
-    }
+      throw bokasafn::exceptions::perror("getaddrinfo");
+
     sa_raw_.sa_family = info->ai_family;
 
     freeaddrinfo(info);

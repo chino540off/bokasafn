@@ -12,6 +12,8 @@
 #include <array>
 #include <chrono>
 #include <functional>
+#include <iostream>
+#include <list>
 #include <system_error>
 #include <unordered_map>
 
@@ -30,21 +32,44 @@ public:
   using func_t = std::function<bool(int)>;
 
 private:
+  enum class fd_type_t
+  {
+    fd,
+    timer,
+  };
+
   struct fd_handler_t
   {
-    func_t f;
+    fd_type_t type;
     epoll_event e;
+    std::list<std::pair<int, func_t>> funcs;
 
     template <typename... Args>
     bool
-    call(int event, Args &&... args)
+    call(int events, Args &&... args)
     {
-      bool ret = false;
+      bool again = false;
 
-      if (event & EPOLLIN)
-        ret |= f(std::forward<Args>(args)...);
+      for (auto const & it : funcs)
+      {
+        if (events & it.first)
+        {
+          again |= it.second(std::forward<Args>(args)...);
 
-      return ret;
+          if (!again)
+            return again;
+        }
+      }
+
+      return again;
+    }
+
+    void
+    add(int events, func_t f)
+    {
+      e.events |= events;
+
+      funcs.push_back({events, f});
     }
   };
 
@@ -69,14 +94,14 @@ public:
 
     while (running_)
     {
-      std::array<epoll_event, MAX_EVENTS> events{};
+      std::array<epoll_event, MAX_EVENTS> epoll_events{};
 
-      auto n = epoll_wait(fd_, events.begin(), MAX_EVENTS, timeout.count());
+      auto n = epoll_wait(fd_, epoll_events.begin(), MAX_EVENTS, timeout.count());
 
       for (auto i = 0; i < n; ++i)
       {
-        int fd = events[ i ].data.fd;
-        int event = events[ i ].events;
+        int fd = epoll_events[ i ].data.fd;
+        int events = epoll_events[ i ].events;
         auto it = handlers_.find(fd);
 
         if (it == handlers_.end())
@@ -85,8 +110,8 @@ public:
           continue;
         }
 
-        // Call handle on the correct event
-        bool again = it->second.call(event, fd);
+        // Call handle on the correct events
+        bool again = it->second.call(events, fd);
 
         if (again)
         {
@@ -95,7 +120,7 @@ public:
         }
         else
         {
-          handlers_.erase(it);
+          remove(fd);
         }
       }
     }
@@ -109,18 +134,33 @@ public:
 
 public:
   int
-  add(int fd, func_t f, int flags = EPOLLIN)
+  add(int fd, func_t f, int flags = EPOLLIN, fd_type_t type = fd_type_t::fd)
   {
-    epoll_event evt;
-    evt.events = flags | EPOLLONESHOT;
-    evt.data.fd = fd;
+    auto it = handlers_.find(fd);
 
-    fd_handler_t handle{f, evt};
+    if (it == handlers_.end())
+    {
+      epoll_event evt;
 
-    if (epoll_ctl(fd_, EPOLL_CTL_ADD, fd, &evt))
-      throw bokasafn::exceptions::perror("epoll_ctl(ADD)");
+      memset(&evt, 0, sizeof(evt));
+      evt.events = EPOLLONESHOT | flags; // Want to control after each call if we want to continue
+      evt.data.fd = fd;
 
-    handlers_.emplace(fd, handle);
+      fd_handler_t handle{type, evt, {}};
+      handle.add(flags, f);
+
+      handlers_.emplace(fd, handle);
+
+      if (epoll_ctl(fd_, EPOLL_CTL_ADD, fd, &evt))
+        throw bokasafn::exceptions::perror("epoll_ctl(ADD)");
+    }
+    else
+    {
+      it->second.add(flags, f);
+
+      if (epoll_ctl(fd_, EPOLL_CTL_MOD, fd, &it->second.e))
+        throw bokasafn::exceptions::perror("epoll_ctl(MOD)");
+    }
 
     return fd;
   }
@@ -128,10 +168,16 @@ public:
   void
   remove(int fd)
   {
-    handlers_.erase(fd);
+    auto it = handlers_.find(fd);
+    if (it == handlers_.end())
+      return;
 
-    if (epoll_ctl(fd_, EPOLL_CTL_DEL, fd, nullptr))
-      throw bokasafn::exceptions::perror("epoll_ctl(DEL)");
+    if (it->second.type == fd_type_t::timer)
+      close(fd);
+
+    handlers_.erase(it);
+
+    epoll_ctl(fd_, EPOLL_CTL_DEL, fd, nullptr);
   }
 
 private:
@@ -151,25 +197,38 @@ public:
   {
     int fd = timerfd_create(CLOCK_MONOTONIC, 0);
     if (fd < 0)
-      throw bokasafn::exceptions::perror("timerfd_create");
+      throw bokasafn::exceptions::perror("timer_create");
 
     struct itimerspec ts
     {
-      to_timespec(dur), to_timespec(dur)
+      {0, 0}, to_timespec(dur)
     };
 
     if (timerfd_settime(fd, 0, &ts, NULL) < 0)
-      throw bokasafn::exceptions::perror("timerfd_settime");
+      throw bokasafn::exceptions::perror("timer_settime");
 
-    return add(fd, [f](int fd) {
+    return add(fd, [dur, f, this](int fd) {
       size_t data = 0;
 
       // Read on timer fd to stop epoll
       if (read(fd, &data, sizeof(data)) < 0)
-        throw bokasafn::exceptions::perror("timer read");
+        throw bokasafn::exceptions::perror("timer_read");
 
-      return f(fd);
-    });
+      struct itimerspec ts
+      {
+        {0, 0}, to_timespec(dur)
+      };
+
+      auto ret = f(fd);
+
+      if (ret)
+      {
+        if (timerfd_settime(fd, 0, &ts, NULL) < 0)
+          throw bokasafn::exceptions::perror("timer_settime");
+      }
+
+      return ret;
+    }, EPOLLIN, fd_type_t::timer);
   }
 
 private:

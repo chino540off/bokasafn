@@ -69,10 +69,10 @@ TEST(TestNet, SocketTCP)
     auto p = s.accept(paddr);
     int input;
 
-    p.send(&data, sizeof(data));
-    p.recv(&input, sizeof(input));
+    p->send(&data, sizeof(data));
+    p->recv(&input, sizeof(input));
 
-    p.close();
+    p->close();
 
     EXPECT_EQ(input, data);
   });

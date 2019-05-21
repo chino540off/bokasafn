@@ -21,7 +21,10 @@ namespace exceptions
 class perror : std::exception
 {
 public:
-  perror(std::string const & label) : what_(label + ": " + std::strerror(errno)) {}
+  perror(std::string const & label) : what_(label + ": " + std::strerror(errno))
+  {
+    ::perror(label.c_str());
+  }
 
   virtual char const *
   what() const noexcept

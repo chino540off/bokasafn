@@ -6,10 +6,14 @@
 #define BOKASAFN_NET_SOCKET_HH_
 
 #include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 
 #include <chrono>
+#include <memory>
 
+#include <bokasafn/exceptions.hh>
 #include <bokasafn/net/multicast.hh>
 #include <bokasafn/net/saddr.hh>
 
@@ -79,8 +83,10 @@ class socket
 {
 public:
   socket() { fd_ = ::socket(AF, SOCK, PROTO); }
-  socket(int fd) : fd_(fd) {}
   ~socket() { close(); }
+
+private:
+  socket(int fd) : fd_(fd) {}
 
 public:
   void
@@ -88,41 +94,33 @@ public:
   {
     // bind to receive address
     if (::bind(fd_, a.get(), a.size()) < 0)
-    {
-      perror("bind");
-    }
+      throw bokasafn::exceptions::perror("bind");
   }
 
   void
   connect(saddr const & a) const
   {
     if (::connect(fd_, a.get(), a.size()) < 0)
-    {
-      perror("connect");
-    }
+      throw bokasafn::exceptions::perror("connect");
   }
 
   void
   listen(int backlog) const
   {
     if (::listen(fd_, backlog) < 0)
-    {
-      perror("listen");
-    }
+      throw bokasafn::exceptions::perror("listen");
   }
 
-  socket<AF, SOCK, PROTO>
+  std::shared_ptr<socket<AF, SOCK, PROTO>>
   accept(saddr & a) const
   {
     socklen_t addrlen = sizeof(sockaddr);
 
     int fd = ::accept(fd_, a.raw(), &addrlen);
     if (fd < 0)
-    {
-      perror("accept");
-    }
+      throw bokasafn::exceptions::perror("accept");
 
-    return socket<AF, SOCK, PROTO>(fd);
+    return std::shared_ptr<socket<AF, SOCK, PROTO>>(new socket<AF, SOCK, PROTO>(fd));
   }
 
 public:
@@ -140,9 +138,38 @@ public:
   {
     int err = setsockopt(fd_, opt.level, opt.optname, opt.optval, opt.optlen);
     if (err < 0)
-    {
-      perror("setsockopt");
-    }
+      throw bokasafn::exceptions::perror("setsockopt");
+  }
+
+  int
+  get_flags() const
+  {
+    int flags;
+
+    flags = fcntl(fd_, F_GETFL, 0);
+    if (flags == -1)
+      throw bokasafn::exceptions::perror("fcntl(F_GETFL)");
+
+    return flags;
+  }
+
+  void
+  set_flags(int flags) const
+  {
+    if (fcntl(fd_, F_SETFL, flags) == -1)
+      throw bokasafn::exceptions::perror("fcntl(F_SETFL)");
+  }
+
+  void
+  add_flags(int flags) const
+  {
+    set_flags(get_flags() | flags);
+  }
+
+  void
+  remove_flags(int flags) const
+  {
+    set_flags(get_flags() & ~flags);
   }
 
   void
@@ -196,6 +223,21 @@ private:
   int fd_;
 };
 
+namespace ipv4
+{
+
+using tcp = socket<AF_INET, SOCK_STREAM, IPPROTO_TCP>;
+using udp = socket<AF_INET, SOCK_DGRAM, IPPROTO_UDP>;
+
+} /** !ipv4 */
+
+namespace ipv6
+{
+
+using tcp = socket<AF_INET6, SOCK_STREAM, IPPROTO_TCP>;
+using udp = socket<AF_INET6, SOCK_DGRAM, IPPROTO_UDP>;
+
+} /** !ipv6 */
 } /** !net */
 } /** !bokasafn */
 

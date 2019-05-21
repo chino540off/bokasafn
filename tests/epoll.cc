@@ -17,20 +17,24 @@ TEST(TestEpoll, FileDescriptor)
   EXPECT_GE(write(p[ 1 ], "a", 2), 0);
   close(p[ 1 ]);
 
-  bool test = false;
+  bool test1 = false;
+  bool test2 = false;
 
   bokasafn::epoll<20> e;
 
-  e.add(p[ 0 ], [&test](int fd) {
+  e.add(p[ 0 ], [&test1](int fd) {
     char buffer[ 16 ];
 
     // Read from pipe
     EXPECT_GE(read(fd, buffer, sizeof(buffer)), 0);
-    test = true;
+    test1 = true;
 
     return true;
   });
-  EXPECT_THROW(e.add(p[ 0 ], [&test](int) { return true; }), std::system_error);
+  e.add(p[ 0 ], [&test2](int) {
+    test2 = true;
+    return false;
+  });
 
   std::thread t([&e]() { e.start(500ms); });
 
@@ -42,7 +46,8 @@ TEST(TestEpoll, FileDescriptor)
   e.stop();
   t.join();
 
-  EXPECT_TRUE(test);
+  EXPECT_TRUE(test1);
+  EXPECT_TRUE(test2);
 }
 
 TEST(TestEpoll, Timer)
@@ -51,7 +56,7 @@ TEST(TestEpoll, Timer)
   int test1 = 0;
   int test2 = 0;
 
-  e.timer(1s, [&test1](int) {
+  e.timer(2s, [&test1](int) {
     test1++;
     return false;
   });
